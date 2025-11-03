@@ -1,39 +1,54 @@
 package Server;
 
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
-import java.net.*;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
 
 public class Server {
     private static final int PORT = 4444;
 
     public static void main(String[] args) {
         try (ServerSocket server = new ServerSocket(PORT)) {
-            // Initialisation du serveur
             System.out.println("Serveur en attente de connexion sur le port " + PORT + "...");
-            Socket client = server.accept();
-            System.out.println("Connexion acceptée de : " + client.getInetAddress());
+            try (Socket client = server.accept()) {
+                System.out.println("Connexion acceptée de : " + client.getInetAddress());
+                ObjectOutputStream out = new ObjectOutputStream(client.getOutputStream());
+                out.flush();
+                ObjectInputStream in = new ObjectInputStream(client.getInputStream());
 
-            // Initialisation des flux
-            BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
-            PrintWriter out = new PrintWriter(client.getOutputStream(), true);
+                SecretKey cleAESClient = generateKey(128);
+                byte[] keyBytes = cleAESClient.getEncoded();
+                out.writeObject(keyBytes); // envoi de la clé brute
+                out.flush();
 
-            boolean connexionFerme = false;
+                boolean connexionFerme = false;
+                while (!connexionFerme) {
+                    Object obj = in.readObject();
+                    if (!(obj instanceof String)) break;
+                    String clientEntree = (String) obj;
 
-            while (!connexionFerme) {
+                    System.out.println("Client : " + clientEntree);
 
-                String clientEntree = in.readLine();
+                    out.writeObject("Message Reçu");
+                    out.flush();
 
-                System.out.println("Client : " + clientEntree);
-
-                out.println("Message Reçu");
-
-                connexionFerme = clientEntree.equals("bye");
-
+                    connexionFerme = "bye".equalsIgnoreCase(clientEntree);
+                }
+                System.out.println("Fin de la transmission serveur.");
             }
-            System.out.println("Fin de la transmission serveur.");
-        } catch (IOException e) {
+        } catch (IOException | ClassNotFoundException | NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
     }
 
+    private static SecretKey generateKey(int bits) throws NoSuchAlgorithmException {
+        KeyGenerator kg = KeyGenerator.getInstance("AES");
+        kg.init(bits);
+        return kg.generateKey();
+    }
 }
