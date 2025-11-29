@@ -14,41 +14,17 @@ public class Server {
 
     public static void main(String[] args) {
         try (ServerSocket server = new ServerSocket(PORT)) {
-            System.out.println("Serveur en attente de connexion sur le port " + PORT + "...");
-            try (Socket client = server.accept()) {
-                System.out.println("Connexion acceptée de : " + client.getInetAddress());
-                ObjectOutputStream out = new ObjectOutputStream(client.getOutputStream());
-                out.flush();
-                ObjectInputStream in = new ObjectInputStream(client.getInputStream());
+            System.out.println("Serveur en attente de connexions...");
 
-                SecretKey cleAESClient = generateKey(128);
-                byte[] keyBytes = cleAESClient.getEncoded();
-                out.writeObject(keyBytes); // envoi de la clé brute
-                out.flush();
+            while (true) {
+                Socket client = server.accept();
+                System.out.println("Nouveau client connecté : " + client.getInetAddress());
 
-                boolean connexionFerme = false;
-                while (!connexionFerme) {
-                    Object obj = in.readObject();
-                    if (!(obj instanceof String)) break;
-                    String clientEntree = (String) obj;
-
-                    System.out.println("Client : " + clientEntree);
-
-                    out.writeObject("Message Reçu");
-                    out.flush();
-
-                    connexionFerme = "bye".equalsIgnoreCase(clientEntree);
-                }
-                System.out.println("Fin de la transmission serveur.");
+                new Thread(new gestionnaireClient(client)).start();
             }
-        } catch (IOException | ClassNotFoundException | NoSuchAlgorithmException e) {
+
+        } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    private static SecretKey generateKey(int bits) throws NoSuchAlgorithmException {
-        KeyGenerator kg = KeyGenerator.getInstance("AES");
-        kg.init(bits);
-        return kg.generateKey();
     }
 }
