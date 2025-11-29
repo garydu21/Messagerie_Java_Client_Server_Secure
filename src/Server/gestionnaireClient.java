@@ -1,14 +1,13 @@
 package Server;
 
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
 import Cryptage.AES;
 
 public class gestionnaireClient implements Runnable {
@@ -17,13 +16,11 @@ public class gestionnaireClient implements Runnable {
     private ObjectInputStream in;
     private ObjectOutputStream out;
     private SecretKey cleAESClient;
-    private static final ArrayList<gestionnaireClient> clients = new ArrayList<>();
+    private static final List<gestionnaireClient> clients = new CopyOnWriteArrayList<>();
 
     public gestionnaireClient(Socket socket) {
         this.client = socket;
-        synchronized (clients) {
-            clients.add(this);
-        }
+        clients.add(this);
     }
 
     @Override
@@ -63,25 +60,21 @@ public class gestionnaireClient implements Runnable {
     }
 
     private void broadcast(String message, gestionnaireClient expediteur) {
-        synchronized (clients) {
-            for (gestionnaireClient c : clients) {
-                if (c != expediteur) {
-                    try {
-                        String msgChiffre = AES.crypteAES(message, c.cleAESClient);
-                        c.out.writeObject(msgChiffre);
-                        c.out.flush();
-                    } catch (Exception e) {
-                        System.out.println("Erreur broadcast : " + e.getMessage());
-                    }
+        for (gestionnaireClient c : clients) {
+            if (c != expediteur) {
+                try {
+                    String msgChiffre = AES.crypteAES(message, c.cleAESClient);
+                    c.out.writeObject(msgChiffre);
+                    c.out.flush();
+                } catch (Exception e) {
+                    System.out.println("Erreur broadcast : " + e.getMessage());
                 }
             }
         }
     }
 
     private void deconnexion() {
-        synchronized (clients) {
-            clients.remove(this);
-        }
+        clients.remove(this);
         try {
             client.close();
         } catch (Exception e) {
