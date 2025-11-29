@@ -1,13 +1,7 @@
 package Server;
-
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.security.NoSuchAlgorithmException;
-import java.util.Base64;
 
 public class Server {
     private static final int PORT = 4444;

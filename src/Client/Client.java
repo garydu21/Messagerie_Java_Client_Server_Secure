@@ -1,5 +1,8 @@
 package Client;
 
+import Cryptage.AES;
+
+import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
@@ -21,28 +24,41 @@ public class Client {
 
             Object kobj = in.readObject();
             byte[] keyBytes = (byte[]) kobj;
-            SecretKey secretKey = new SecretKeySpec(keyBytes, "AES");
-            System.out.println("Clé reçue (" + keyBytes.length + " octets).");
+
+            SecretKey cleAESClient = new SecretKeySpec(keyBytes, "AES");
+
+            System.out.println("Clé AES reçue : " + Base64.getEncoder().encodeToString(keyBytes));
 
             Scanner scanner = new Scanner(System.in);
+
+            new Thread(() -> {
+                try {
+                    while (true) {
+                        String messageChiffre = (String) in.readObject();
+                        String message = AES.decrypteAES(messageChiffre, cleAESClient);
+                        System.out.println("\n[Message reçu] : " + message);
+                        System.out.print("Votre message > ");
+                    }
+                } catch (Exception e) {
+                    System.out.println("Connexion fermée.");
+                }
+            }).start();
+
             boolean connexionFerme = false;
 
             while (!connexionFerme) {
-                System.out.print("Entrez votre message : ");
-                String clientSortie = scanner.nextLine();
 
-                out.writeObject(clientSortie);
+                System.out.print("Votre message > ");
+                String msg = scanner.nextLine();
+                String msgChiffre = AES.crypteAES(msg, cleAESClient);
+                out.writeObject(msgChiffre);
                 out.flush();
 
-                Object reply = in.readObject();
-                String serverEntree = (reply instanceof String) ? (String) reply : String.valueOf(reply);
-                System.out.println("Serveur : " + serverEntree);
-
-                connexionFerme = "bye".equalsIgnoreCase(clientSortie);
+                connexionFerme = msg.equalsIgnoreCase("bye");
             }
             System.out.println("Fin de la transmission client.");
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 }
