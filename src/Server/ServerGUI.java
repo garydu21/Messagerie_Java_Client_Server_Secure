@@ -25,6 +25,7 @@ public class ServerGUI {
                 Socket client = server.accept();
                 System.out.println("✓ Nouveau client connecté: " + client.getInetAddress());
 
+                // Créer un thread avec le gestionnaire GUI
                 new Thread(new gestionnaireClientGUI(client)).start();
             }
 

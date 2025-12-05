@@ -9,7 +9,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import Cryptage.AES;
 
 /**
- * Gestionnaire de client CORRIGÉ pour l'interface graphique
+ * Gestionnaire de client pour l'interface graphique
+ * Gère les salons, messages privés et la liste des utilisateurs
  */
 public class gestionnaireClientGUI implements Runnable {
 
@@ -27,9 +28,19 @@ public class gestionnaireClientGUI implements Runnable {
     private static final Map<String, Set<gestionnaireClientGUI>> salons =
             Collections.synchronizedMap(new HashMap<>());
 
+    // Map des clés AES par salon : nom du salon -> clé AES
+    private static final Map<String, SecretKey> salonKeys =
+            Collections.synchronizedMap(new HashMap<>());
+
     static {
-        // Initialiser le salon général
+        // Initialiser le salon général avec sa clé
         salons.put("Général", Collections.synchronizedSet(new HashSet<>()));
+        try {
+            salonKeys.put("Général", AES.genererCle(128));
+            System.out.println("Clé AES créée pour le salon : Général");
+        } catch (Exception e) {
+            System.err.println("Erreur création clé salon Général : " + e.getMessage());
+        }
     }
 
     public gestionnaireClientGUI(Socket socket) {
@@ -55,12 +66,25 @@ public class gestionnaireClientGUI implements Runnable {
 
             // Ajouter au salon général par défaut
             synchronized (salons) {
-                salons.get("Général").add(this);
+                Set<gestionnaireClientGUI> salonGeneral = salons.get("Général");
+                if (salonGeneral != null) {
+                    salonGeneral.add(this);
+                }
+
+                // Envoyer la clé du salon Général au client
+                SecretKey generalRoomKey = salonKeys.get("Général");
+                if (generalRoomKey != null) {
+                    String keyMessage = "ROOM_KEY:" + Base64.getEncoder().encodeToString(generalRoomKey.getEncoded());
+                    String encryptedKey = AES.crypteAES(keyMessage, cleAESClient);
+                    out.writeObject(encryptedKey);
+                    out.flush();
+                    System.out.println("Clé du salon Général envoyée au nouveau client");
+                }
             }
 
-            boolean connexionFerme = false;
+            boolean connexionFermee = false;
 
-            while (!connexionFerme) {
+            while (!connexionFermee) {
                 String messageChiffre = (String) in.readObject();
                 String message = AES.decrypteAES(messageChiffre, cleAESClient);
 
@@ -78,17 +102,22 @@ public class gestionnaireClientGUI implements Runnable {
                 broadcast(message, this);
 
                 // Vérifier "bye"
-                connexionFerme = message.equalsIgnoreCase("bye");
+                connexionFermee = message.equalsIgnoreCase("bye");
             }
 
             deconnexion();
 
         } catch (Exception e) {
-            System.out.println("Erreur avec client : " + e.getMessage());
+            System.err.println("Erreur avec client : " + e.getMessage());
             deconnexion();
         }
     }
 
+    /**
+     * Traite les commandes spéciales (SET_USERNAME, CHANGE_ROOM, CREATE_ROOM, PRIVATE_MSG)
+     * @param message Message à analyser
+     * @return true si c'était une commande spéciale
+     */
     private boolean handleSpecialCommands(String message) {
         try {
             // SET_USERNAME: Définir le pseudo
@@ -98,10 +127,10 @@ public class gestionnaireClientGUI implements Runnable {
                     System.out.println("Nouveau client: " + newUsername);
                     this.username = newUsername;
 
-                    // ENVOYER LA LISTE DES SALONS AU NOUVEAU CLIENT
+                    // Envoyer la liste des salons au nouveau client
                     sendRoomList();
 
-                    // NOTIFIER TOUT LE MONDE DE LA LISTE DES UTILISATEURS
+                    // Notifier tout le monde de la liste des utilisateurs
                     broadcastUserList();
 
                     // Message de bienvenue
@@ -113,14 +142,18 @@ public class gestionnaireClientGUI implements Runnable {
             // CHANGE_ROOM: Changer de salon
             if (message.startsWith("CHANGE_ROOM:")) {
                 String newRoom = message.substring(12).trim();
-                changeRoom(newRoom);
+                if (!newRoom.isEmpty()) {
+                    changeRoom(newRoom);
+                }
                 return true;
             }
 
             // CREATE_ROOM: Créer un nouveau salon
             if (message.startsWith("CREATE_ROOM:")) {
                 String roomName = message.substring(12).trim();
-                createRoom(roomName);
+                if (!roomName.isEmpty()) {
+                    createRoom(roomName);
+                }
                 return true;
             }
 
@@ -136,17 +169,19 @@ public class gestionnaireClientGUI implements Runnable {
             // Extraire le username des messages formatés
             if (message.startsWith("[") && message.contains("]") && message.contains(":")) {
                 int salonEnd = message.indexOf("]");
-                String salon = message.substring(1, salonEnd);
-                String rest = message.substring(salonEnd + 1);
+                if (salonEnd > 0 && salonEnd < message.length() - 1) {
+                    String salon = message.substring(1, salonEnd);
+                    String rest = message.substring(salonEnd + 1);
 
-                int usernameEnd = rest.indexOf(":");
-                if (usernameEnd > 0) {
-                    String extractedUsername = rest.substring(0, usernameEnd).trim();
-                    if (!extractedUsername.isEmpty() && !extractedUsername.equals(this.username)) {
-                        this.username = extractedUsername;
-                        broadcastUserList();
+                    int usernameEnd = rest.indexOf(":");
+                    if (usernameEnd > 0 && usernameEnd < rest.length() - 1) {
+                        String extractedUsername = rest.substring(0, usernameEnd).trim();
+                        if (!extractedUsername.isEmpty() && !extractedUsername.equals(this.username)) {
+                            this.username = extractedUsername;
+                            broadcastUserList();
+                        }
+                        this.currentRoom = salon;
                     }
-                    this.currentRoom = salon;
                 }
             }
 
@@ -159,14 +194,10 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * CHANGER DE SALON
+     * Changer de salon
+     * @param newRoom Nom du nouveau salon
      */
     private void changeRoom(String newRoom) {
-        if (newRoom == null || newRoom.trim().isEmpty()) {
-            System.err.println("Erreur: nom de salon vide");
-            return;
-        }
-
         synchronized (salons) {
             try {
                 // Retirer de l'ancien salon
@@ -177,6 +208,13 @@ public class gestionnaireClientGUI implements Runnable {
 
                 // S'assurer que le salon existe
                 salons.putIfAbsent(newRoom, Collections.synchronizedSet(new HashSet<>()));
+
+                // Si le salon n'a pas de clé, en créer une
+                if (!salonKeys.containsKey(newRoom)) {
+                    SecretKey roomKey = AES.genererCle(128);
+                    salonKeys.put(newRoom, roomKey);
+                    System.out.println("Nouvelle clé AES créée pour le salon : " + newRoom);
+                }
 
                 // Ajouter au nouveau salon
                 Set<gestionnaireClientGUI> newRoomSet = salons.get(newRoom);
@@ -189,34 +227,48 @@ public class gestionnaireClientGUI implements Runnable {
 
                 System.out.println(username + " : " + oldRoom + " → " + newRoom);
 
+                // Envoyer la clé AES du salon au client
+                SecretKey roomKey = salonKeys.get(newRoom);
+                if (roomKey != null) {
+                    String keyMessage = "ROOM_KEY:" + Base64.getEncoder().encodeToString(roomKey.getEncoded());
+                    sendToClient(keyMessage);
+                    System.out.println("Clé du salon " + newRoom + " envoyée à " + username);
+                }
+
                 // Confirmer au client
                 String confirmation = "[SYSTÈME] Vous êtes dans le salon: " + newRoom;
                 sendToClient(confirmation);
 
             } catch (Exception e) {
                 System.err.println("Erreur lors du changement de salon: " + e.getMessage());
-                e.printStackTrace();
-
-                // Envoyer message d'erreur au client
                 try {
                     sendToClient("[SYSTÈME] Erreur lors du changement de salon");
                 } catch (Exception ex) {
-                    ex.printStackTrace();
+                    System.err.println("Impossible d'envoyer le message d'erreur: " + ex.getMessage());
                 }
             }
         }
     }
 
     /**
-     * CRÉER UN SALON
+     * Créer un nouveau salon
+     * @param roomName Nom du salon à créer
      */
     private void createRoom(String roomName) {
         synchronized (salons) {
             if (!salons.containsKey(roomName)) {
                 salons.put(roomName, Collections.synchronizedSet(new HashSet<>()));
-                System.out.println("Nouveau salon créé: " + roomName);
 
-                // NOTIFIER TOUS LES CLIENTS DU NOUVEAU SALON
+                // Créer une clé AES unique pour ce salon
+                try {
+                    SecretKey roomKey = AES.genererCle(128);
+                    salonKeys.put(roomName, roomKey);
+                    System.out.println("Nouveau salon créé: " + roomName + " avec clé AES unique");
+                } catch (Exception e) {
+                    System.err.println("Erreur création clé pour salon " + roomName + ": " + e.getMessage());
+                }
+
+                // Notifier tous les clients du nouveau salon
                 broadcastNewRoom(roomName);
 
                 // Envoyer la liste complète des salons à tous
@@ -225,14 +277,16 @@ public class gestionnaireClientGUI implements Runnable {
                 try {
                     sendToClient("[SYSTÈME] Le salon " + roomName + " existe déjà");
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    System.err.println("Erreur envoi message: " + e.getMessage());
                 }
             }
         }
     }
 
     /**
-     * MESSAGE PRIVÉ
+     * Envoyer un message privé à un utilisateur
+     * @param targetUsername Destinataire
+     * @param message Contenu du message
      */
     private void sendPrivateMessage(String targetUsername, String message) {
         for (gestionnaireClientGUI c : clients) {
@@ -243,7 +297,7 @@ public class gestionnaireClientGUI implements Runnable {
                     System.out.println("MP: " + this.username + " → " + targetUsername);
                     return;
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    System.err.println("Erreur envoi MP: " + e.getMessage());
                 }
             }
         }
@@ -252,12 +306,14 @@ public class gestionnaireClientGUI implements Runnable {
         try {
             sendToClient("[SYSTÈME] Utilisateur " + targetUsername + " non trouvé");
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Erreur envoi message: " + e.getMessage());
         }
     }
 
     /**
-     * BROADCAST AUX MEMBRES DU MÊME SALON UNIQUEMENT
+     * Diffuser un message aux membres du même salon uniquement
+     * @param message Message à diffuser
+     * @param expediteur Client expéditeur
      */
     private void broadcast(String message, gestionnaireClientGUI expediteur) {
         // Extraire le salon du message
@@ -266,7 +322,9 @@ public class gestionnaireClientGUI implements Runnable {
         if (message.startsWith("[") && message.contains("]")) {
             try {
                 int salonEnd = message.indexOf("]");
-                salonMessage = message.substring(1, salonEnd);
+                if (salonEnd > 0) {
+                    salonMessage = message.substring(1, salonEnd);
+                }
             } catch (Exception e) {
                 // Si parsing échoue, utiliser le salon actuel
             }
@@ -288,7 +346,7 @@ public class gestionnaireClientGUI implements Runnable {
                         c.sendToClient(message);
                         count++;
                     } catch (Exception e) {
-                        System.out.println("Erreur broadcast à " + c.username + ": " + e.getMessage());
+                        System.err.println("Erreur broadcast à " + c.username + ": " + e.getMessage());
                     }
                 }
             }
@@ -298,20 +356,22 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * BROADCAST À TOUS LES CLIENTS
+     * Diffuser un message à tous les clients
+     * @param message Message à diffuser
      */
     private void broadcastToAll(String message) {
         for (gestionnaireClientGUI c : clients) {
             try {
                 c.sendToClient(message);
             } catch (Exception e) {
-                System.out.println("Erreur broadcast global: " + e.getMessage());
+                System.err.println("Erreur broadcast global: " + e.getMessage());
             }
         }
     }
 
     /**
-     * NOTIFIER NOUVEAU SALON
+     * Notifier tous les clients d'un nouveau salon
+     * @param roomName Nom du nouveau salon
      */
     private void broadcastNewRoom(String roomName) {
         for (gestionnaireClientGUI c : clients) {
@@ -320,13 +380,13 @@ public class gestionnaireClientGUI implements Runnable {
                 c.out.writeObject(encrypted);
                 c.out.flush();
             } catch (Exception e) {
-                e.printStackTrace();
+                System.err.println("Erreur envoi nouveau salon: " + e.getMessage());
             }
         }
     }
 
     /**
-     * ENVOYER LISTE DES SALONS À TOUS
+     * Envoyer la liste des salons à tous les clients
      */
     private void broadcastRoomListToAll() {
         String roomList = buildRoomList();
@@ -336,13 +396,13 @@ public class gestionnaireClientGUI implements Runnable {
                 c.out.writeObject(encrypted);
                 c.out.flush();
             } catch (Exception e) {
-                e.printStackTrace();
+                System.err.println("Erreur envoi liste salons: " + e.getMessage());
             }
         }
     }
 
     /**
-     * ENVOYER LISTE DES SALONS AU CLIENT
+     * Envoyer la liste des salons à ce client
      */
     private void sendRoomList() {
         try {
@@ -351,12 +411,13 @@ public class gestionnaireClientGUI implements Runnable {
             out.writeObject(encrypted);
             out.flush();
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Erreur envoi liste salons: " + e.getMessage());
         }
     }
 
     /**
-     * CONSTRUIRE LA LISTE DES SALONS
+     * Construire la chaîne de liste des salons
+     * @return Liste des salons séparés par des virgules
      */
     private String buildRoomList() {
         StringBuilder sb = new StringBuilder();
@@ -372,7 +433,7 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * BROADCAST LISTE DES UTILISATEURS
+     * Diffuser la liste des utilisateurs à tous les clients
      */
     private void broadcastUserList() {
         StringBuilder userListBuilder = new StringBuilder();
@@ -394,13 +455,15 @@ public class gestionnaireClientGUI implements Runnable {
                 c.out.writeObject(encrypted);
                 c.out.flush();
             } catch (Exception e) {
-                e.printStackTrace();
+                System.err.println("Erreur envoi liste utilisateurs: " + e.getMessage());
             }
         }
     }
 
     /**
-     * ENVOYER UN MESSAGE À CE CLIENT
+     * Envoyer un message à ce client
+     * @param message Message à envoyer
+     * @throws Exception en cas d'erreur d'envoi
      */
     private void sendToClient(String message) throws Exception {
         String msgChiffre = AES.crypteAES(message, cleAESClient);
@@ -409,7 +472,7 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * DÉCONNEXION
+     * Déconnexion propre du client
      */
     private void deconnexion() {
         // Retirer de la liste des clients
@@ -425,9 +488,11 @@ public class gestionnaireClientGUI implements Runnable {
 
         // Fermer la socket
         try {
-            client.close();
+            if (client != null && !client.isClosed()) {
+                client.close();
+            }
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Erreur fermeture socket: " + e.getMessage());
         }
 
         System.out.println("Client déconnecté: " + client.getInetAddress() + " (" + username + ")");

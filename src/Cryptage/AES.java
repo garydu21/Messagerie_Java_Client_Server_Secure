@@ -28,7 +28,6 @@ public class AES {
         Cipher cipher = Cipher.getInstance("AES");
         cipher.init(Cipher.DECRYPT_MODE, key);
         byte[] decryptByte = cipher.doFinal(Base64.getDecoder().decode(message));
-        byte[] cryptageByte = decryptByte;
-        return new String(cryptageByte);
+        return new String(decryptByte, "UTF-8");
     }
 }

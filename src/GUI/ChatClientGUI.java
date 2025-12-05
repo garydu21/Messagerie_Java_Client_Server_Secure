@@ -11,28 +11,29 @@ import java.net.Socket;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Interface graphique du client
+ * Interface graphique du client avec onglets par salon
  */
 public class ChatClientGUI extends JFrame {
 
-    // graphiques
-    private JTextArea chatArea;
-    private JTextField messageField;
-    private JButton sendButton, connectButton, disconnectButton;
+    // Graphiques
+    private JTabbedPane roomTabs;
+    private Map<String, RoomPanel> roomPanels;
+    private JButton connectButton, disconnectButton;
     private JTextField serverField, portField, usernameField;
-    private JLabel statusLabel, encryptionLabel, currentRoomLabel;
+    private JLabel statusLabel, encryptionLabel;
     private JList<String> userList;
     private DefaultListModel<String> userListModel;
-    private JComboBox<String> roomSelector;
-    private DefaultComboBoxModel<String> roomModel;
 
     // Réseau
     private Socket serveur;
     private ObjectOutputStream out;
     private ObjectInputStream in;
     private SecretKey cleAESClient;
+    private Map<String, SecretKey> roomKeys = new HashMap<>();
     private Thread receptionThread;
     private boolean isConnected = false;
 
@@ -41,7 +42,6 @@ public class ChatClientGUI extends JFrame {
     private String username = "User";
     private String currentRoom = "Général";
 
-    // TODO: couleurs plus vive
     private static final Color CONNECTED_COLOR = Color.WHITE;
     private static final Color CONNECTED_BG = new Color(0, 128, 0);
     private static final Color DISCONNECTED_COLOR = Color.WHITE;
@@ -51,13 +51,119 @@ public class ChatClientGUI extends JFrame {
     private static final Color DANGER_COLOR = new Color(220, 53, 69);
     private static final Color BG_COLOR = new Color(248, 249, 250);
 
+    /**
+     * Panel pour un salon individuel
+     */
+    private class RoomPanel extends JPanel {
+        private JTextArea chatArea;
+        private JTextField messageField;
+        private JButton sendButton;
+        private String roomName;
+
+        public RoomPanel(String roomName) {
+            this.roomName = roomName;
+            setLayout(new BorderLayout(5, 5));
+            setBorder(new EmptyBorder(5, 5, 5, 5));
+
+            // Zone de chat
+            chatArea = new JTextArea();
+            chatArea.setEditable(false);
+            chatArea.setFont(new Font("Consolas", Font.PLAIN, 13));
+            chatArea.setLineWrap(true);
+            chatArea.setWrapStyleWord(true);
+            JScrollPane scrollPane = new JScrollPane(chatArea);
+            add(scrollPane, BorderLayout.CENTER);
+
+            // Panel du bas pour écrire
+            JPanel bottomPanel = new JPanel(new BorderLayout(5, 5));
+            bottomPanel.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(2, 0, 0, 0, BG_COLOR),
+                    BorderFactory.createEmptyBorder(10, 0, 0, 0)
+            ));
+
+            // Label du salon
+            JLabel roomLabel = new JLabel("💬 " + roomName);
+            roomLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
+            roomLabel.setForeground(PRIMARY_COLOR);
+
+            // Champ de texte
+            messageField = new JTextField();
+            messageField.setFont(new Font("SansSerif", Font.PLAIN, 14));
+            messageField.setEnabled(false);
+            messageField.addActionListener(e -> sendMessageInRoom());
+
+            // Bouton envoyer
+            sendButton = createButton("Envoyer", Color.BLACK, SUCCESS_COLOR);
+            sendButton.setEnabled(false);
+            sendButton.addActionListener(e -> sendMessageInRoom());
+
+            // Assemblage
+            JPanel inputPanel = new JPanel(new BorderLayout(5, 5));
+            inputPanel.add(roomLabel, BorderLayout.NORTH);
+
+            JPanel messagePanel = new JPanel(new BorderLayout(5, 0));
+            messagePanel.add(messageField, BorderLayout.CENTER);
+            messagePanel.add(sendButton, BorderLayout.EAST);
+
+            inputPanel.add(messagePanel, BorderLayout.CENTER);
+            bottomPanel.add(inputPanel, BorderLayout.CENTER);
+
+            add(bottomPanel, BorderLayout.SOUTH);
+        }
+
+        private void sendMessageInRoom() {
+            String msg = messageField.getText().trim();
+            if (msg.isEmpty() || !isConnected) return;
+
+            try {
+                // Vérifier si nous avons la clé du salon
+                SecretKey roomKey = roomKeys.get(roomName);
+                if (roomKey == null) {
+                    appendMessage("[ERREUR] Clé du salon non disponible", Color.RED);
+                    return;
+                }
+
+                // Chiffrer le message avec la clé du salon
+                String msgChiffreAvecCleSalon = AES.crypteAES(msg, roomKey);
+
+                // Formatter le message avec les métadonnées
+                String formattedMsg = "[" + roomName + "]" + username + ": " + msgChiffreAvecCleSalon;
+
+                // Envoyer au serveur (chiffré avec la clé client pour la transmission)
+                sendEncryptedMessage(formattedMsg);
+
+                // Afficher dans le salon
+                appendMessage("[Vous] " + msg, new Color(0, 120, 0));
+                messageField.setText("");
+            } catch (Exception e) {
+                appendMessage("[ERREUR] " + e.getMessage(), Color.RED);
+                e.printStackTrace();
+            }
+        }
+
+        public void appendMessage(String message, Color color) {
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+            chatArea.append("[" + timestamp + "] " + message + "\n");
+            chatArea.setCaretPosition(chatArea.getDocument().getLength());
+        }
+
+        public void setInputEnabled(boolean enabled) {
+            messageField.setEnabled(enabled);
+            sendButton.setEnabled(enabled);
+        }
+
+        public JTextArea getChatArea() {
+            return chatArea;
+        }
+    }
+
     public ChatClientGUI() {
         initializeGUI();
     }
 
     private void initializeGUI() {
-        setTitle("Chat Sécurisé AES-128");
-        setSize(1000, 700);
+        setTitle("Chat Sécurisé AES-128 - Style TeamSpeak");
+        setSize(1100, 750);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -67,11 +173,9 @@ public class ChatClientGUI extends JFrame {
 
         mainPanel.add(createConnectionPanel(), BorderLayout.NORTH);
         mainPanel.add(createCenterPanel(), BorderLayout.CENTER);
-        mainPanel.add(createMessagePanel(), BorderLayout.SOUTH);
         mainPanel.add(createStatusBar(), BorderLayout.PAGE_END);
 
         add(mainPanel);
-        setControlsEnabled(false);
     }
 
     private JPanel createConnectionPanel() {
@@ -91,11 +195,11 @@ public class ChatClientGUI extends JFrame {
         usernameField = new JTextField("User" + (int)(Math.random() * 1000), 10);
         panel.add(usernameField);
 
-        connectButton = createButton("Connecter", Color.WHITE, PRIMARY_COLOR);
+        connectButton = createButton("Connecter", Color.BLACK, PRIMARY_COLOR);
         connectButton.addActionListener(e -> connectToServer());
         panel.add(connectButton);
 
-        disconnectButton = createButton("Déconnecter", Color.WHITE, DANGER_COLOR);
+        disconnectButton = createButton("Déconnecter", Color.BLACK, DANGER_COLOR);
         disconnectButton.setEnabled(false);
         disconnectButton.addActionListener(e -> disconnectFromServer());
         panel.add(disconnectButton);
@@ -106,19 +210,24 @@ public class ChatClientGUI extends JFrame {
     private JPanel createCenterPanel() {
         JPanel panel = new JPanel(new BorderLayout(10, 0));
 
-        JPanel chatPanel = new JPanel(new BorderLayout());
-        chatPanel.setBorder(BorderFactory.createTitledBorder("Messages (AES-128)"));
+        // Tabs pour les salons
+        roomTabs = new JTabbedPane();
+        roomTabs.setFont(new Font("SansSerif", Font.BOLD, 12));
+        roomPanels = new HashMap<>();
 
-        chatArea = new JTextArea();
-        chatArea.setEditable(false);
-        chatArea.setFont(new Font("Consolas", Font.PLAIN, 12));
-        chatArea.setLineWrap(true);
-        chatArea.setWrapStyleWord(true);
+        // Créer le salon Général par défaut
+        addRoomTab("Général");
 
-        JScrollPane chatScroll = new JScrollPane(chatArea);
-        chatPanel.add(chatScroll, BorderLayout.CENTER);
+        // Listener pour changer de salon quand on change d'onglet
+        roomTabs.addChangeListener(e -> {
+            int selectedIndex = roomTabs.getSelectedIndex();
+            if (selectedIndex >= 0) {
+                String roomName = roomTabs.getTitleAt(selectedIndex);
+                onRoomTabChanged(roomName);
+            }
+        });
 
-        panel.add(chatPanel, BorderLayout.CENTER);
+        panel.add(roomTabs, BorderLayout.CENTER);
         panel.add(createSidePanel(), BorderLayout.EAST);
 
         return panel;
@@ -128,21 +237,16 @@ public class ChatClientGUI extends JFrame {
         JPanel sidePanel = new JPanel(new BorderLayout(5, 5));
         sidePanel.setPreferredSize(new Dimension(200, 0));
 
-        JPanel roomPanel = new JPanel(new BorderLayout(5, 5));
-        roomPanel.setBorder(BorderFactory.createTitledBorder("Salon"));
-        roomModel = new DefaultComboBoxModel<>();
-        roomModel.addElement("Général");
-        roomSelector = new JComboBox<>(roomModel);
-        roomSelector.addActionListener(e -> changeRoom());
-        roomPanel.add(roomSelector, BorderLayout.NORTH);
-
+        // Bouton pour créer un salon
         JButton createRoomBtn = new JButton("+ Nouveau salon");
-        createRoomBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        createRoomBtn.setFont(new Font("SansSerif", Font.BOLD, 12));
+        createRoomBtn.setBackground(PRIMARY_COLOR);
+        createRoomBtn.setForeground(Color.BLACK);
         createRoomBtn.addActionListener(e -> promptCreateRoom());
-        roomPanel.add(createRoomBtn, BorderLayout.SOUTH);
 
+        // Liste des utilisateurs
         JPanel userPanel = new JPanel(new BorderLayout());
-        userPanel.setBorder(BorderFactory.createTitledBorder("Utilisateurs"));
+        userPanel.setBorder(BorderFactory.createTitledBorder("Utilisateurs connectés"));
         userListModel = new DefaultListModel<>();
         userList = new JList<>(userListModel);
         userList.setFont(new Font("SansSerif", Font.PLAIN, 12));
@@ -157,37 +261,10 @@ public class ChatClientGUI extends JFrame {
         JScrollPane userScroll = new JScrollPane(userList);
         userPanel.add(userScroll, BorderLayout.CENTER);
 
-        sidePanel.add(roomPanel, BorderLayout.NORTH);
+        sidePanel.add(createRoomBtn, BorderLayout.NORTH);
         sidePanel.add(userPanel, BorderLayout.CENTER);
 
         return sidePanel;
-    }
-
-    private JPanel createMessagePanel() {
-        JPanel panel = new JPanel(new BorderLayout(5, 5));
-        panel.setBorder(BorderFactory.createTitledBorder("Envoyer un message"));
-
-        JPanel inputPanel = new JPanel(new BorderLayout(5, 0));
-
-        currentRoomLabel = new JLabel("📍 " + currentRoom);
-        currentRoomLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
-        currentRoomLabel.setForeground(PRIMARY_COLOR);
-        currentRoomLabel.setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 10));
-
-        messageField = new JTextField();
-        messageField.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        messageField.addActionListener(e -> sendMessage());
-
-        inputPanel.add(currentRoomLabel, BorderLayout.WEST);
-        inputPanel.add(messageField, BorderLayout.CENTER);
-
-        sendButton = createButton("Envoyer", Color.WHITE, SUCCESS_COLOR);
-        sendButton.addActionListener(e -> sendMessage());
-
-        panel.add(inputPanel, BorderLayout.CENTER);
-        panel.add(sendButton, BorderLayout.EAST);
-
-        return panel;
     }
 
     private JPanel createStatusBar() {
@@ -214,10 +291,82 @@ public class ChatClientGUI extends JFrame {
         return panel;
     }
 
+    private void addRoomTab(String roomName) {
+        if (!roomPanels.containsKey(roomName)) {
+            RoomPanel roomPanel = new RoomPanel(roomName);
+            roomPanels.put(roomName, roomPanel);
+            roomTabs.addTab(roomName, roomPanel);
+        }
+    }
+
+    private void onRoomTabChanged(String newRoom) {
+        if (!isConnected || newRoom.equals(currentRoom)) return;
+
+        try {
+            String oldRoom = currentRoom;
+            currentRoom = newRoom;
+
+            // TOUJOURS dire au serveur qu'on change de salon
+            sendEncryptedMessage("CHANGE_ROOM:" + currentRoom);
+
+            // Message dans le nouveau salon
+            RoomPanel roomPanel = roomPanels.get(newRoom);
+            if (roomPanel != null) {
+                roomPanel.appendMessage("═══ Vous êtes dans le salon: " + newRoom + " ═══", Color.BLUE);
+            }
+
+        } catch (Exception e) {
+            System.err.println("Erreur changement de salon: " + e.getMessage());
+        }
+    }
+
+    private void promptCreateRoom() {
+        if (!isConnected) {
+            showError("Connectez-vous d'abord !");
+            return;
+        }
+
+        String roomName = JOptionPane.showInputDialog(this, "Nom du nouveau salon:");
+        if (roomName != null && !roomName.trim().isEmpty()) {
+            try {
+                String trimmedName = roomName.trim();
+                sendEncryptedMessage("CREATE_ROOM:" + trimmedName);
+
+                // Ajouter l'onglet localement
+                addRoomTab(trimmedName);
+
+                // Basculer vers le nouveau salon automatiquement
+                int tabIndex = roomTabs.indexOfTab(trimmedName);
+                if (tabIndex >= 0) {
+                    roomTabs.setSelectedIndex(tabIndex);
+                }
+
+                // Dire au serveur qu'on change de salon
+                currentRoom = trimmedName;
+                sendEncryptedMessage("CHANGE_ROOM:" + trimmedName);
+
+                getRoomPanel("Général").appendMessage("[SYSTÈME] ✅ Vous avez créé le salon: " + trimmedName, new Color(0, 150, 0));
+            } catch (Exception e) {
+                showError("Impossible de créer le salon");
+            }
+        }
+    }
+
+    private void promptPrivateMessage(String targetUser) {
+        String message = JOptionPane.showInputDialog(this, "Message privé à " + targetUser + ":");
+        if (message != null && !message.trim().isEmpty()) {
+            try {
+                sendEncryptedMessage("PRIVATE_MSG:" + targetUser + ":" + message.trim());
+                getRoomPanel(currentRoom).appendMessage("[MP à " + targetUser + "] " + message, new Color(138, 43, 226));
+            } catch (Exception e) {
+                showError("Erreur MP: " + e.getMessage());
+            }
+        }
+    }
+
     private void connectToServer() {
         String server = serverField.getText().trim();
         int port;
-
         try {
             port = Integer.parseInt(portField.getText().trim());
         } catch (NumberFormatException e) {
@@ -233,35 +382,38 @@ public class ChatClientGUI extends JFrame {
 
         try {
             serveur = new Socket(server, port);
-
             out = new ObjectOutputStream(serveur.getOutputStream());
             out.flush();
             in = new ObjectInputStream(serveur.getInputStream());
 
+            // Réception de la clé AES
             Object kobj = in.readObject();
             byte[] keyBytes = (byte[]) kobj;
             cleAESClient = new SecretKeySpec(keyBytes, "AES");
 
             isConnected = true;
+            setStatusConnected(true);
+            encryptionLabel.setText("Chiffrement: AES-128 (" + keyBytes.length * 8 + " bits)");
+            encryptionLabel.setForeground(new Color(0, 150, 0));
+
+            // Activer les champs de saisie
+            enableRoomInputs(true);
+
+            // Envoyer le username
             sendEncryptedMessage("SET_USERNAME:" + username);
 
-            // Mettre à jour le statut - CONNECTÉ
-            setStatusConnected(true);
+            getRoomPanel("Général").appendMessage("=== Connecté au serveur ===", Color.BLUE);
+            getRoomPanel("Général").appendMessage("Bienvenue " + username + " !", Color.BLUE);
 
-            encryptionLabel.setText("🔒 AES-128: " + Base64.getEncoder().encodeToString(keyBytes).substring(0, 12) + "...");
-            encryptionLabel.setForeground(CONNECTED_BG);
-
-            appendToChat("[SYSTÈME] Connecté au serveur " + server + ":" + port, Color.BLUE);
-            appendToChat("[SYSTÈME] Chiffrement AES-128 activé", Color.BLUE);
-
-            startReceptionThread();
-
-            setControlsEnabled(true);
+            // Désactiver/activer les boutons
             connectButton.setEnabled(false);
             disconnectButton.setEnabled(true);
             serverField.setEnabled(false);
             portField.setEnabled(false);
             usernameField.setEnabled(false);
+
+            // Démarrer la réception
+            startReceiving();
 
         } catch (Exception e) {
             showError("Erreur de connexion: " + e.getMessage());
@@ -269,10 +421,39 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
-    private void startReceptionThread() {
+    private void disconnectFromServer() {
+        try {
+            if (isConnected) {
+                sendEncryptedMessage("bye");
+                isConnected = false;
+            }
+
+            if (serveur != null) serveur.close();
+            if (receptionThread != null) receptionThread.interrupt();
+
+            setStatusConnected(false);
+            encryptionLabel.setText("Chiffrement: Inactif");
+            encryptionLabel.setForeground(Color.DARK_GRAY);
+
+            enableRoomInputs(false);
+
+            connectButton.setEnabled(true);
+            disconnectButton.setEnabled(false);
+            serverField.setEnabled(true);
+            portField.setEnabled(true);
+            usernameField.setEnabled(true);
+
+            getRoomPanel("Général").appendMessage("=== Déconnecté ===", Color.RED);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void startReceiving() {
         receptionThread = new Thread(() -> {
             try {
-                while (isConnected && !Thread.interrupted()) {
+                while (isConnected) {
                     String messageChiffre = (String) in.readObject();
                     String message = AES.decrypteAES(messageChiffre, cleAESClient);
 
@@ -283,17 +464,20 @@ public class ChatClientGUI extends JFrame {
                     final String displayMsg = parseMessage(message);
                     if (displayMsg != null) {
                         SwingUtilities.invokeLater(() -> {
-                            appendToChat(displayMsg, Color.BLACK);
-                            Toolkit.getDefaultToolkit().beep();
+                            RoomPanel roomPanel = getRoomPanel(currentRoom);
+                            if (roomPanel != null) {
+                                roomPanel.appendMessage(displayMsg, Color.BLACK);
+                                Toolkit.getDefaultToolkit().beep();
+                            }
                         });
                     }
                 }
             } catch (Exception e) {
                 if (isConnected) {
                     SwingUtilities.invokeLater(() -> {
-                        appendToChat("[SYSTÈME] Connexion perdue", Color.RED);
+                        getRoomPanel("Général").appendMessage("[SYSTÈME] Connexion perdue", Color.RED);
                         setStatusConnected(false);
-                        encryptionLabel.setText("🔒 Chiffrement: Inactif");
+                        encryptionLabel.setText("Chiffrement: Inactif");
                         encryptionLabel.setForeground(Color.DARK_GRAY);
                     });
                 }
@@ -304,6 +488,24 @@ public class ChatClientGUI extends JFrame {
 
     private boolean handleSystemMessage(String message) {
         try {
+            // Gestion de la clé AES du salon
+            if (message.startsWith("ROOM_KEY:")) {
+                String keyBase64 = message.substring(9);
+                byte[] keyBytes = Base64.getDecoder().decode(keyBase64);
+                SecretKey roomKey = new SecretKeySpec(keyBytes, "AES");
+                roomKeys.put(currentRoom, roomKey);
+
+                System.out.println("Clé AES reçue pour le salon: " + currentRoom);
+                SwingUtilities.invokeLater(() -> {
+                    RoomPanel roomPanel = getRoomPanel(currentRoom);
+                    if (roomPanel != null) {
+                        roomPanel.appendMessage("[SYSTÈME] Clé de chiffrement reçue", new Color(0, 150, 0));
+                        roomPanel.setInputEnabled(true); // Activer le champ !
+                    }
+                });
+                return true;
+            }
+
             if (message.startsWith("USER_LIST:")) {
                 String users = message.substring(10);
                 SwingUtilities.invokeLater(() -> updateUserList(users));
@@ -313,10 +515,8 @@ public class ChatClientGUI extends JFrame {
             if (message.startsWith("NEW_ROOM:")) {
                 String roomName = message.substring(9);
                 SwingUtilities.invokeLater(() -> {
-                    if (!roomExists(roomName)) {
-                        roomModel.addElement(roomName);
-                        appendToChat("[SYSTÈME] Nouveau salon: " + roomName, Color.BLUE);
-                    }
+                    addRoomTab(roomName);
+                    getRoomPanel("Général").appendMessage("[SYSTÈME] Nouveau salon disponible: " + roomName + " (cliquez sur l'onglet pour y accéder)", Color.BLUE);
                 });
                 return true;
             }
@@ -334,118 +534,50 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
-    private void sendMessage() {
-        String msg = messageField.getText().trim();
-
-        if (msg.isEmpty()) return;
-        if (!isConnected) {
-            showError("Vous n'êtes pas connecté !");
-            return;
+    private String parseMessage(String message) {
+        if (message.startsWith("[SYSTÈME]") || message.startsWith("[MP")) {
+            return message;
         }
 
-        try {
-            String formattedMsg = "[" + currentRoom + "]" + username + ": " + msg;
-            sendEncryptedMessage(formattedMsg);
-            appendToChat("[Vous ➤ " + currentRoom + "] " + msg, new Color(0, 120, 0));
-            messageField.setText("");
-        } catch (Exception e) {
-            showError("Erreur d'envoi: " + e.getMessage());
-            e.printStackTrace();
+        if (message.startsWith("[") && message.contains("]") && message.contains(":")) {
+            try {
+                int salonEnd = message.indexOf("]");
+                String salon = message.substring(1, salonEnd);
+                String rest = message.substring(salonEnd + 1);
+
+                int usernameEnd = rest.indexOf(":");
+                String senderUsername = rest.substring(0, usernameEnd).trim();
+                String encryptedContent = rest.substring(usernameEnd + 1).trim();
+
+                if (!salon.equals(currentRoom)) {
+                    System.out.println("Message ignoré - Salon: " + salon + " (actuel: " + currentRoom + ")");
+                    return null;
+                }
+
+                // Déchiffrer le contenu avec la clé du salon
+                SecretKey roomKey = roomKeys.get(salon);
+                if (roomKey != null) {
+                    try {
+                        String decryptedContent = AES.decrypteAES(encryptedContent, roomKey);
+                        return "[" + senderUsername + "] " + decryptedContent;
+                    } catch (Exception e) {
+                        return "[" + senderUsername + "] [Message chiffré - clé invalide]";
+                    }
+                } else {
+                    return "[" + senderUsername + "] [Message chiffré - clé manquante]";
+                }
+            } catch (Exception e) {
+                return message;
+            }
         }
+
+        return message;
     }
 
     private void sendEncryptedMessage(String message) throws Exception {
         String msgChiffre = AES.crypteAES(message, cleAESClient);
         out.writeObject(msgChiffre);
         out.flush();
-    }
-
-    private void disconnectFromServer() {
-        try {
-            if (isConnected) {
-                sendEncryptedMessage("bye");
-
-                if (out != null) out.close();
-                if (in != null) in.close();
-                if (serveur != null) serveur.close();
-                if (receptionThread != null) receptionThread.interrupt();
-
-                isConnected = false;
-                setStatusConnected(false);
-                encryptionLabel.setText("🔒 Chiffrement: Inactif");
-                encryptionLabel.setForeground(Color.DARK_GRAY);
-                appendToChat("[SYSTÈME] Déconnecté du serveur", Color.RED);
-
-                setControlsEnabled(false);
-                connectButton.setEnabled(true);
-                disconnectButton.setEnabled(false);
-                serverField.setEnabled(true);
-                portField.setEnabled(true);
-                usernameField.setEnabled(true);
-                userListModel.clear();
-            }
-        } catch (Exception e) {
-            showError("Erreur déconnexion: " + e.getMessage());
-        }
-    }
-
-    private void changeRoom() {
-        if (!isConnected) return;
-
-        String newRoom = (String) roomSelector.getSelectedItem();
-        if (newRoom == null || newRoom.equals(currentRoom)) {
-            return;
-        }
-
-        try {
-            String oldRoom = currentRoom;
-            currentRoom = newRoom;
-
-            if (currentRoomLabel != null) {
-                currentRoomLabel.setText("📍 " + currentRoom);
-            }
-
-            sendEncryptedMessage("CHANGE_ROOM:" + currentRoom);
-
-            chatArea.append("\n");
-            chatArea.append("═══════════════════════════════════════════════════\n");
-            chatArea.append("    CHANGEMENT DE SALON : " + oldRoom + " → " + currentRoom + "\n");
-            chatArea.append("═══════════════════════════════════════════════════\n");
-            chatArea.append("\n");
-            chatArea.setCaretPosition(chatArea.getDocument().getLength());
-        } catch (Exception e) {
-            appendToChat("[ERREUR] Impossible de changer de salon: " + e.getMessage(), Color.RED);
-            e.printStackTrace();
-        }
-    }
-
-    private void promptCreateRoom() {
-        if (!isConnected) {
-            showError("Connectez-vous d'abord !");
-            return;
-        }
-
-        String roomName = JOptionPane.showInputDialog(this, "Nom du nouveau salon:");
-        if (roomName != null && !roomName.trim().isEmpty()) {
-            try {
-                sendEncryptedMessage("CREATE_ROOM:" + roomName.trim());
-                appendToChat("[SYSTÈME] Demande de création: " + roomName, Color.BLUE);
-            } catch (Exception e) {
-                appendToChat("[ERREUR] Impossible de créer le salon", Color.RED);
-            }
-        }
-    }
-
-    private void promptPrivateMessage(String targetUser) {
-        String message = JOptionPane.showInputDialog(this, "Message privé à " + targetUser + ":");
-        if (message != null && !message.trim().isEmpty()) {
-            try {
-                sendEncryptedMessage("PRIVATE_MSG:" + targetUser + ":" + message.trim());
-                appendToChat("[MP à " + targetUser + "] " + message, new Color(138, 43, 226));
-            } catch (Exception e) {
-                showError("Erreur MP: " + e.getMessage());
-            }
-        }
     }
 
     private void updateUserList(String userListString) {
@@ -462,65 +594,27 @@ public class ChatClientGUI extends JFrame {
     }
 
     private void updateRoomList(String roomListString) {
-        String selected = (String) roomSelector.getSelectedItem();
-        roomModel.removeAllElements();
-
         if (!roomListString.isEmpty()) {
             String[] rooms = roomListString.split(",");
             for (String room : rooms) {
                 String trimmed = room.trim();
                 if (!trimmed.isEmpty()) {
-                    roomModel.addElement(trimmed);
+                    addRoomTab(trimmed);
                 }
             }
         }
+    }
 
-        if (selected != null && roomExists(selected)) {
-            roomSelector.setSelectedItem(selected);
+    private RoomPanel getRoomPanel(String roomName) {
+        return roomPanels.get(roomName);
+    }
+
+    private void enableRoomInputs(boolean enabled) {
+        for (RoomPanel panel : roomPanels.values()) {
+            panel.setInputEnabled(enabled);
         }
     }
 
-    private boolean roomExists(String roomName) {
-        for (int i = 0; i < roomModel.getSize(); i++) {
-            if (roomModel.getElementAt(i).equals(roomName)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String parseMessage(String message) {
-        if (message.startsWith("[SYSTÈME]") || message.startsWith("[MP")) {
-            return message;
-        }
-
-        if (message.startsWith("[") && message.contains("]") && message.contains(":")) {
-            try {
-                int salonEnd = message.indexOf("]");
-                String salon = message.substring(1, salonEnd);
-                String rest = message.substring(salonEnd + 1);
-
-                int usernameEnd = rest.indexOf(":");
-                String senderUsername = rest.substring(0, usernameEnd).trim();
-                String content = rest.substring(usernameEnd + 1).trim();
-
-                if (!salon.equals(currentRoom)) {
-                    System.out.println("Message ignoré - Salon: " + salon + " (actuel: " + currentRoom + ")");
-                    return null;
-                }
-
-                return "[" + senderUsername + " ➤ " + salon + "] " + content;
-            } catch (Exception e) {
-                return message;
-            }
-        }
-
-        return message;
-    }
-
-    /**
-     * MISE À JOUR DU STATUT CONNECTÉ/DÉCONNECTÉ
-     */
     private void setStatusConnected(boolean connected) {
         if (connected) {
             statusLabel.setText(" ● Connecté ");
@@ -539,19 +633,6 @@ public class ChatClientGUI extends JFrame {
                     BorderFactory.createEmptyBorder(4, 10, 4, 10)
             ));
         }
-    }
-
-    private void appendToChat(String message, Color color) {
-        if (message == null) return;
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
-        chatArea.append("[" + timestamp + "] " + message + "\n");
-        chatArea.setCaretPosition(chatArea.getDocument().getLength());
-    }
-
-    private void setControlsEnabled(boolean enabled) {
-        messageField.setEnabled(enabled);
-        sendButton.setEnabled(enabled);
-        roomSelector.setEnabled(enabled);
     }
 
     private void showError(String message) {
