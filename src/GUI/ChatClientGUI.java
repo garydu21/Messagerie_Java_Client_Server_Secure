@@ -7,6 +7,7 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.io.*;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -15,7 +16,22 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Interface graphique du client avec onglets par salon
+ * Interface graphique du client avec support des salons par onglets.
+ * Architecture style TeamSpeak : un onglet par salon avec zone de chat et champ de saisie dedies.
+ *
+ * Fonctionnalites :
+ * - Connexion au serveur avec chiffrement AES-128
+ * - Salons multiples avec onglets (style Discord/TeamSpeak)
+ * - Messages prives entre utilisateurs
+ * - Creation dynamique de salons
+ * - Double chiffrement : cle client + cle salon
+ *
+ * Choix Base64 :
+ * Les messages chiffres sont en bytes, on utilise Base64 pour les transmettre
+ * en tant que String via ObjectOutputStream. C'est un standard universel.
+ *
+ * @author Chris - Angel
+ * @version 2.0
  */
 public class ChatClientGUI extends JFrame {
 
@@ -52,7 +68,9 @@ public class ChatClientGUI extends JFrame {
     private static final Color BG_COLOR = new Color(248, 249, 250);
 
     /**
-     * Panel pour un salon individuel
+     * Classe interne representant un panneau de salon.
+     * Chaque salon a sa propre zone de chat et son propre champ de saisie.
+     * Permet d'isoler visuellement et fonctionnellement chaque salon.
      */
     private class RoomPanel extends JPanel {
         private JTextArea chatArea;
@@ -60,6 +78,12 @@ public class ChatClientGUI extends JFrame {
         private JButton sendButton;
         private String roomName;
 
+        /**
+         * Constructeur du panneau de salon.
+         * Cree la zone de chat, le champ de saisie et le bouton envoyer.
+         *
+         * @param roomName Le nom du salon
+         */
         public RoomPanel(String roomName) {
             this.roomName = roomName;
             setLayout(new BorderLayout(5, 5));
@@ -111,6 +135,10 @@ public class ChatClientGUI extends JFrame {
             add(bottomPanel, BorderLayout.SOUTH);
         }
 
+        /**
+         * Envoie un message dans ce salon.
+         * Le message est chiffre avec la cle du salon puis envoye au serveur.
+         */
         private void sendMessageInRoom() {
             String msg = messageField.getText().trim();
             if (msg.isEmpty() || !isConnected) return;
@@ -141,12 +169,24 @@ public class ChatClientGUI extends JFrame {
             }
         }
 
+        /**
+         * Ajoute un message colore dans la zone de chat de ce salon.
+         *
+         * @param message Le message a afficher
+         * @param color La couleur du texte
+         */
         public void appendMessage(String message, Color color) {
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
             chatArea.append("[" + timestamp + "] " + message + "\n");
             chatArea.setCaretPosition(chatArea.getDocument().getLength());
         }
 
+        /**
+         * Active ou desactive le champ de saisie et le bouton.
+         * Utilise lors de la connexion/deconnexion.
+         *
+         * @param enabled true pour activer, false pour desactiver
+         */
         public void setInputEnabled(boolean enabled) {
             messageField.setEnabled(enabled);
             sendButton.setEnabled(enabled);
@@ -157,6 +197,10 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
+    /**
+     * Constructeur de l'interface graphique.
+     * Initialise tous les composants Swing et l'interface utilisateur.
+     */
     public ChatClientGUI() {
         initializeGUI();
     }
@@ -291,6 +335,12 @@ public class ChatClientGUI extends JFrame {
         return panel;
     }
 
+    /**
+     * Ajoute un onglet pour un nouveau salon.
+     * Cree le RoomPanel associe et l'ajoute aux onglets.
+     *
+     * @param roomName Le nom du salon
+     */
     private void addRoomTab(String roomName) {
         if (!roomPanels.containsKey(roomName)) {
             RoomPanel roomPanel = new RoomPanel(roomName);
@@ -299,6 +349,12 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
+    /**
+     * Gere le changement d'onglet de salon.
+     * Envoie CHANGE_ROOM au serveur pour recevoir la cle du nouveau salon.
+     *
+     * @param newRoom Le nom du nouveau salon
+     */
     private void onRoomTabChanged(String newRoom) {
         if (!isConnected || newRoom.equals(currentRoom)) return;
 
@@ -320,6 +376,11 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
+    /**
+     * Demande a l'utilisateur de creer un nouveau salon.
+     * Affiche une boite de dialogue pour saisir le nom du salon.
+     * Envoie CREATE_ROOM au serveur et bascule automatiquement sur le nouveau salon.
+     */
     private void promptCreateRoom() {
         if (!isConnected) {
             showError("Connectez-vous d'abord !");
@@ -364,11 +425,26 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
+    /**
+     * Etablit la connexion au serveur.
+     *
+     * Processus :
+     * 1. Validation du port (1-65535)
+     * 2. Creation socket avec timeout de 5 secondes
+     * 3. Reception de la cle AES personnelle
+     * 4. Envoi du nom d'utilisateur
+     * 5. Activation de l'interface
+     * 6. Demarrage du thread de reception
+     */
     private void connectToServer() {
         String server = serverField.getText().trim();
         int port;
         try {
             port = Integer.parseInt(portField.getText().trim());
+            if (port < 1 || port > 65535) {
+                showError("Port doit être entre 1 et 65535 !");
+                return;
+            }
         } catch (NumberFormatException e) {
             showError("Port invalide !");
             return;
@@ -381,7 +457,8 @@ public class ChatClientGUI extends JFrame {
         }
 
         try {
-            serveur = new Socket(server, port);
+            serveur = new Socket();
+            serveur.connect(new InetSocketAddress(server, port), 5000);
             out = new ObjectOutputStream(serveur.getOutputStream());
             out.flush();
             in = new ObjectInputStream(serveur.getInputStream());
@@ -421,15 +498,34 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
+    /**
+     * Deconnecte proprement du serveur.
+     * Ferme les flux ObjectInputStream et ObjectOutputStream avant la socket
+     * pour eviter les fuites de ressources.
+     */
     private void disconnectFromServer() {
         try {
             if (isConnected) {
-                sendEncryptedMessage("bye");
+                try {
+                    sendEncryptedMessage("bye");
+                } catch (Exception e) {
+                    System.err.println("Erreur envoi bye: " + e.getMessage());
+                }
                 isConnected = false;
             }
 
-            if (serveur != null) serveur.close();
-            if (receptionThread != null) receptionThread.interrupt();
+            if (out != null) {
+                try { out.close(); } catch (Exception e) {}
+            }
+            if (in != null) {
+                try { in.close(); } catch (Exception e) {}
+            }
+            if (serveur != null && !serveur.isClosed()) {
+                serveur.close();
+            }
+            if (receptionThread != null) {
+                receptionThread.interrupt();
+            }
 
             setStatusConnected(false);
             encryptionLabel.setText("Chiffrement: Inactif");
@@ -450,6 +546,10 @@ public class ChatClientGUI extends JFrame {
         }
     }
 
+    /**
+     * Demarre le thread de reception des messages.
+     * Traite les messages systeme (cles, listes) et les messages de salons.
+     */
     private void startReceiving() {
         receptionThread = new Thread(() -> {
             try {
@@ -574,6 +674,13 @@ public class ChatClientGUI extends JFrame {
         return message;
     }
 
+    /**
+     * Envoie un message chiffre au serveur.
+     * Le message est chiffre avec la cle personnelle du client.
+     *
+     * @param message Le message en clair
+     * @throws Exception Si le chiffrement ou l'envoi echoue
+     */
     private void sendEncryptedMessage(String message) throws Exception {
         String msgChiffre = AES.crypteAES(message, cleAESClient);
         out.writeObject(msgChiffre);
@@ -663,6 +770,12 @@ public class ChatClientGUI extends JFrame {
         return btn;
     }
 
+    /**
+     * Point d'entree de l'application client.
+     * Lance l'interface graphique.
+     *
+     * @param args Arguments non utilises
+     */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             try {

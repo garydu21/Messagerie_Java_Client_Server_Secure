@@ -10,10 +10,36 @@ import java.net.Socket;
 import java.util.Base64;
 import java.util.Scanner;
 
+/**
+ * Client de chat en mode console.
+ * Se connecte au serveur, recoit une cle AES et echange des messages chiffres.
+ *
+ * Choix cryptographie symetrique (AES) :
+ * - Beaucoup plus rapide que RSA pour chiffrer les messages
+ * - Demander dans l'enonce
+ *
+ * @author Chris - Angel
+ * @version 1.0
+ */
 public class Client {
+    /**
+     * Adresse du serveur (localhost pour tests locaux).
+     */
     private static final String SERVEUR_ADRESSE = "localhost";
+
+    /**
+     * Port du serveur (doit correspondre au port serveur).
+     */
     private static final int PORT = 4444;
 
+    /**
+     * Point d'entree du client.
+     * Se connecte au serveur, recoit la cle AES, puis lance deux threads :
+     * - Thread principal : Lecture clavier et envoi messages
+     * - Thread secondaire : Reception messages du serveur
+     *
+     * @param args Arguments non utilises
+     */
     public static void main(String[] args) {
         try (Socket serveur = new Socket(SERVEUR_ADRESSE, PORT)) {
             System.out.println("Connecté au serveur !");
@@ -22,6 +48,7 @@ public class Client {
             out.flush();
             ObjectInputStream in = new ObjectInputStream(serveur.getInputStream());
 
+            // Reception de la cle AES du serveur
             Object kobj = in.readObject();
             byte[] keyBytes = (byte[]) kobj;
 
@@ -31,6 +58,7 @@ public class Client {
 
             Scanner scanner = new Scanner(System.in);
 
+            // Thread de reception des messages
             new Thread(() -> {
                 try {
                     while (true) {
@@ -46,6 +74,7 @@ public class Client {
 
             boolean connexionFerme = false;
 
+            // Thread principal : envoi des messages
             while (!connexionFerme) {
 
                 System.out.print("Votre message > ");
