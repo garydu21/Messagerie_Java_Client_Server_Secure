@@ -22,13 +22,13 @@ import java.util.Map;
  * Fonctionnalites :
  * - Connexion au serveur avec chiffrement AES-128
  * - Salons multiples avec onglets (style Discord/TeamSpeak)
- * - Messages prives entre utilisateurs
- * - Creation dynamique de salons
+ * - Messages privées entre utilisateurs
+ * - Création dynamique de salons
  * - Double chiffrement : cle client + cle salon
  *
  * Choix Base64 :
  * Les messages chiffres sont en bytes, on utilise Base64 pour les transmettre
- * en tant que String via ObjectOutputStream. C'est un standard universel.
+ * en tant que String via ObjectOutputStream.
  *
  * @author Chris - Angel
  * @version 2.0
@@ -68,9 +68,9 @@ public class ChatClientGUI extends JFrame {
     private static final Color BG_COLOR = new Color(248, 249, 250);
 
     /**
-     * Classe interne representant un panneau de salon.
-     * Chaque salon a sa propre zone de chat et son propre champ de saisie.
-     * Permet d'isoler visuellement et fonctionnellement chaque salon.
+     * Classe interne représentant un panneau de salon.
+     * Chaque salon à sa propre zone de chat et son propre champ de saisie.
+     * Permet de séparer visuellement et fonctionnellement chaque salon.
      */
     private class RoomPanel extends JPanel {
         private JTextArea chatArea;
@@ -80,7 +80,7 @@ public class ChatClientGUI extends JFrame {
 
         /**
          * Constructeur du panneau de salon.
-         * Cree la zone de chat, le champ de saisie et le bouton envoyer.
+         * Création de la zone de chat, champ de saisie et bouton d'envoie.
          *
          * @param roomName Le nom du salon
          */
@@ -137,52 +137,51 @@ public class ChatClientGUI extends JFrame {
 
         /**
          * Envoie un message dans ce salon.
-         * Le message est chiffre avec la cle du salon puis envoye au serveur.
+         * Le message est chiffré avec la clé du salon puis envoye au serveur.
          */
         private void sendMessageInRoom() {
             String msg = messageField.getText().trim();
             if (msg.isEmpty() || !isConnected) return;
 
             try {
-                // Vérifier si nous avons la clé du salon
+                // On regarde si on a la clé du salon
                 SecretKey roomKey = roomKeys.get(roomName);
                 if (roomKey == null) {
-                    appendMessage("[ERREUR] Clé du salon non disponible", Color.RED);
+                    appendMessage("[ERREUR] Clé du salon non disponible");
                     return;
                 }
 
-                // Chiffrer le message avec la clé du salon
+                // Chiffrement du message avec la clé du salon
                 String msgChiffreAvecCleSalon = AES.crypteAES(msg, roomKey);
 
-                // Formatter le message avec les métadonnées
+                // Formatage du message
                 String formattedMsg = "[" + roomName + "]" + username + ": " + msgChiffreAvecCleSalon;
 
-                // Envoyer au serveur (chiffré avec la clé client pour la transmission)
+                // Envoie au serveur (chiffré avec la clé client pour la transmission)
                 sendEncryptedMessage(formattedMsg);
 
-                // Afficher dans le salon
-                appendMessage("[Vous] " + msg, new Color(0, 120, 0));
+                // Affichage dans le salon
+                appendMessage("[Vous] " + msg);
                 messageField.setText("");
             } catch (Exception e) {
-                appendMessage("[ERREUR] " + e.getMessage(), Color.RED);
+                appendMessage("[ERREUR] " + e.getMessage());
                 e.printStackTrace();
             }
         }
 
         /**
-         * Ajoute un message colore dans la zone de chat de ce salon.
+         * Ajoute un message dans la zone de chat de ce salon.
          *
-         * @param message Le message a afficher
-         * @param color La couleur du texte
+         * @param message Le message à afficher
          */
-        public void appendMessage(String message, Color color) {
+        public void appendMessage(String message) {
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
             chatArea.append("[" + timestamp + "] " + message + "\n");
             chatArea.setCaretPosition(chatArea.getDocument().getLength());
         }
 
         /**
-         * Active ou desactive le champ de saisie et le bouton.
+         * Active ou désactive le champ de saisie et le bouton.
          * Utilise lors de la connexion/deconnexion.
          *
          * @param enabled true pour activer, false pour desactiver
@@ -190,10 +189,6 @@ public class ChatClientGUI extends JFrame {
         public void setInputEnabled(boolean enabled) {
             messageField.setEnabled(enabled);
             sendButton.setEnabled(enabled);
-        }
-
-        public JTextArea getChatArea() {
-            return chatArea;
         }
     }
 
@@ -337,7 +332,7 @@ public class ChatClientGUI extends JFrame {
 
     /**
      * Ajoute un onglet pour un nouveau salon.
-     * Cree le RoomPanel associe et l'ajoute aux onglets.
+     * Crée le RoomPanel associe et l'ajoute aux onglets.
      *
      * @param roomName Le nom du salon
      */
@@ -355,6 +350,7 @@ public class ChatClientGUI extends JFrame {
      *
      * @param newRoom Le nom du nouveau salon
      */
+
     private void onRoomTabChanged(String newRoom) {
         if (!isConnected || newRoom.equals(currentRoom)) return;
 
@@ -368,7 +364,7 @@ public class ChatClientGUI extends JFrame {
             // Message dans le nouveau salon
             RoomPanel roomPanel = roomPanels.get(newRoom);
             if (roomPanel != null) {
-                roomPanel.appendMessage("═══ Vous êtes dans le salon: " + newRoom + " ═══", Color.BLUE);
+                roomPanel.appendMessage("═══ Vous êtes dans le salon: " + newRoom + " ═══");
             }
 
         } catch (Exception e) {
@@ -377,10 +373,11 @@ public class ChatClientGUI extends JFrame {
     }
 
     /**
-     * Demande a l'utilisateur de creer un nouveau salon.
+     * Demande à l'utilisateur de créer un nouveau salon.
      * Affiche une boite de dialogue pour saisir le nom du salon.
      * Envoie CREATE_ROOM au serveur et bascule automatiquement sur le nouveau salon.
      */
+
     private void promptCreateRoom() {
         if (!isConnected) {
             showError("Connectez-vous d'abord !");
@@ -402,11 +399,11 @@ public class ChatClientGUI extends JFrame {
                     roomTabs.setSelectedIndex(tabIndex);
                 }
 
-                // Dire au serveur qu'on change de salon
+                // Dit au serveur qu'on change de salon
                 currentRoom = trimmedName;
                 sendEncryptedMessage("CHANGE_ROOM:" + trimmedName);
 
-                getRoomPanel("Général").appendMessage("[SYSTÈME] ✅ Vous avez créé le salon: " + trimmedName, new Color(0, 150, 0));
+                getRoomPanel("Général").appendMessage("[SYSTÈME] ✅ Vous avez créé le salon: " + trimmedName);
             } catch (Exception e) {
                 showError("Impossible de créer le salon");
             }
@@ -418,7 +415,7 @@ public class ChatClientGUI extends JFrame {
         if (message != null && !message.trim().isEmpty()) {
             try {
                 sendEncryptedMessage("PRIVATE_MSG:" + targetUser + ":" + message.trim());
-                getRoomPanel(currentRoom).appendMessage("[MP à " + targetUser + "] " + message, new Color(138, 43, 226));
+                getRoomPanel(currentRoom).appendMessage("[MP à " + targetUser + "] " + message);
             } catch (Exception e) {
                 showError("Erreur MP: " + e.getMessage());
             }
@@ -430,11 +427,11 @@ public class ChatClientGUI extends JFrame {
      *
      * Processus :
      * 1. Validation du port (1-65535)
-     * 2. Creation socket avec timeout de 5 secondes
-     * 3. Reception de la cle AES personnelle
+     * 2. Création socket avec timeout de 5 secondes
+     * 3. Réception de la clé AES personnelle
      * 4. Envoi du nom d'utilisateur
      * 5. Activation de l'interface
-     * 6. Demarrage du thread de reception
+     * 6. Démarrage du thread de réception
      */
     private void connectToServer() {
         String server = serverField.getText().trim();
@@ -479,8 +476,8 @@ public class ChatClientGUI extends JFrame {
             // Envoyer le username
             sendEncryptedMessage("SET_USERNAME:" + username);
 
-            getRoomPanel("Général").appendMessage("=== Connecté au serveur ===", Color.BLUE);
-            getRoomPanel("Général").appendMessage("Bienvenue " + username + " !", Color.BLUE);
+            getRoomPanel("Général").appendMessage("=== Connecté au serveur ===");
+            getRoomPanel("Général").appendMessage("Bienvenue " + username + " !");
 
             // Désactiver/activer les boutons
             connectButton.setEnabled(false);
@@ -499,9 +496,8 @@ public class ChatClientGUI extends JFrame {
     }
 
     /**
-     * Deconnecte proprement du serveur.
-     * Ferme les flux ObjectInputStream et ObjectOutputStream avant la socket
-     * pour eviter les fuites de ressources.
+     * Déconnecte proprement du serveur.
+     * Ferme les flux ObjectInputStream et ObjectOutputStream avant le socket.
      */
     private void disconnectFromServer() {
         try {
@@ -539,7 +535,7 @@ public class ChatClientGUI extends JFrame {
             portField.setEnabled(true);
             usernameField.setEnabled(true);
 
-            getRoomPanel("Général").appendMessage("=== Déconnecté ===", Color.RED);
+            getRoomPanel("Général").appendMessage("=== Déconnecté ===");
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -547,8 +543,8 @@ public class ChatClientGUI extends JFrame {
     }
 
     /**
-     * Demarre le thread de reception des messages.
-     * Traite les messages systeme (cles, listes) et les messages de salons.
+     * Démarre le thread de reception des messages.
+     * Traite les méssages système (clés, listes) et les méssages de salons.
      */
     private void startReceiving() {
         receptionThread = new Thread(() -> {
@@ -566,7 +562,7 @@ public class ChatClientGUI extends JFrame {
                         SwingUtilities.invokeLater(() -> {
                             RoomPanel roomPanel = getRoomPanel(currentRoom);
                             if (roomPanel != null) {
-                                roomPanel.appendMessage(displayMsg, Color.BLACK);
+                                roomPanel.appendMessage(displayMsg);
                                 Toolkit.getDefaultToolkit().beep();
                             }
                         });
@@ -575,7 +571,7 @@ public class ChatClientGUI extends JFrame {
             } catch (Exception e) {
                 if (isConnected) {
                     SwingUtilities.invokeLater(() -> {
-                        getRoomPanel("Général").appendMessage("[SYSTÈME] Connexion perdue", Color.RED);
+                        getRoomPanel("Général").appendMessage("[SYSTÈME] Connexion perdue");
                         setStatusConnected(false);
                         encryptionLabel.setText("Chiffrement: Inactif");
                         encryptionLabel.setForeground(Color.DARK_GRAY);
@@ -599,7 +595,7 @@ public class ChatClientGUI extends JFrame {
                 SwingUtilities.invokeLater(() -> {
                     RoomPanel roomPanel = getRoomPanel(currentRoom);
                     if (roomPanel != null) {
-                        roomPanel.appendMessage("[SYSTÈME] Clé de chiffrement reçue", new Color(0, 150, 0));
+                        roomPanel.appendMessage("[SYSTÈME] Clé de chiffrement reçue");
                         roomPanel.setInputEnabled(true); // Activer le champ !
                     }
                 });
@@ -616,7 +612,7 @@ public class ChatClientGUI extends JFrame {
                 String roomName = message.substring(9);
                 SwingUtilities.invokeLater(() -> {
                     addRoomTab(roomName);
-                    getRoomPanel("Général").appendMessage("[SYSTÈME] Nouveau salon disponible: " + roomName + " (cliquez sur l'onglet pour y accéder)", Color.BLUE);
+                    getRoomPanel("Général").appendMessage("[SYSTÈME] Nouveau salon disponible: " + roomName + " (cliquez sur l'onglet pour y accéder)");
                 });
                 return true;
             }
@@ -654,7 +650,7 @@ public class ChatClientGUI extends JFrame {
                     return null;
                 }
 
-                // Déchiffrer le contenu avec la clé du salon
+                // Déchiffre le contenu à l'aide de la clé du salon
                 SecretKey roomKey = roomKeys.get(salon);
                 if (roomKey != null) {
                     try {
@@ -675,8 +671,8 @@ public class ChatClientGUI extends JFrame {
     }
 
     /**
-     * Envoie un message chiffre au serveur.
-     * Le message est chiffre avec la cle personnelle du client.
+     * Envoie un message chiffré au serveur.
+     * Le message est chiffré avec la clé personnelle du client.
      *
      * @param message Le message en clair
      * @throws Exception Si le chiffrement ou l'envoi echoue
@@ -771,10 +767,9 @@ public class ChatClientGUI extends JFrame {
     }
 
     /**
-     * Point d'entree de l'application client.
-     * Lance l'interface graphique.
+     * Lanceur de l'interface graphique.
      *
-     * @param args Arguments non utilises
+     * @param args Par defaut
      */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {

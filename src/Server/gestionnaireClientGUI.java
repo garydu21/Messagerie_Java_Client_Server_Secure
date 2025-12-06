@@ -9,16 +9,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import Cryptage.AES;
 
 /**
- * Gestionnaire de client pour la version graphique avec salons prives.
- * Supporte plusieurs salons avec cles AES independantes pour isolation cryptographique.
+ * Gestionnaire de client pour la version graphique avec salons privés.
+ * Supporte plusieurs salons avec clés AES indépendantes.
  *
- * Architecture double chiffrement (amelioration securite) :
- * - Couche 1 : Cle personnelle client-serveur (cleAESClient)
- *   Permet au serveur de communiquer avec le client de maniere securisee
+ * Architecture double chiffrement (amélioration sécurite):
+ * - Couche 1 : Clé personnelle client-serveur (cleAESClient)
+ *   Permet au serveur de communiquer avec le client de manière sécurisée
  *
- * - Couche 2 : Cle unique par salon (salonKeys)
- *   Les messages sont chiffres avec la cle du salon avant d'etre envoyes
- *   Meme le serveur ne peut pas lire le contenu des messages des salons
+ * - Couche 2 : Clé unique par salon (salonKeys)
+ *   Les messages sont chiffrés avec la clé du salon avant d'être envoyés
+ *   Même le serveur ne peut pas lire le contenu des messages des salons
  *
  * Securite finale : 2^128 × 2^128 = 2^256 combinaisons possibles
  *
@@ -34,7 +34,7 @@ public class gestionnaireClientGUI implements Runnable {
     private String username = "Anonymous";
     private String currentRoom = "Général";
 
-    // Liste de tous les clients connectés
+    // Liste des clients connectés
     private static final List<gestionnaireClientGUI> clients = new CopyOnWriteArrayList<>();
 
     // Map des salons : nom -> ensemble de clients
@@ -58,9 +58,9 @@ public class gestionnaireClientGUI implements Runnable {
 
     /**
      * Constructeur du gestionnaire.
-     * Ajoute le client a la liste partagee des clients connectes.
+     * Ajoute le client à la liste partagée des clients connectés.
      *
-     * @param socket La socket du client connecte
+     * @param socket Socket du client connecté
      */
     public gestionnaireClientGUI(Socket socket) {
         this.client = socket;
@@ -68,19 +68,19 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Boucle principale de gestion du client.
+     * Boucle principale de GestionnaireClientGUI.
      *
      * Processus :
      * 1. Genere et envoie la cle AES personnelle au client
      * 2. Ajoute le client au salon General par defaut
-     * 3. Envoie la cle du salon General au client
+     * 3. Envoie la clé du salon General au client
      * 4. Recoit et traite les messages/commandes du client
-     * 5. Deconnecte proprement a la fin
+     * 5. Déconnecte proprement à la fin
      */
     @Override
     public void run() {
         try {
-            // Initialisation flux
+            // Initialisation du flux
             out = new ObjectOutputStream(client.getOutputStream());
             out.flush();
             in = new ObjectInputStream(client.getInputStream());
@@ -227,10 +227,10 @@ public class gestionnaireClientGUI implements Runnable {
      *
      * Processus :
      * 1. Retire le client de son salon actuel
-     * 2. Cree le nouveau salon s'il n'existe pas
-     * 3. Genere une cle AES pour le nouveau salon si necessaire
+     * 2. Crée un nouveau salon s'il n'existe pas
+     * 3. Genere une clé AES pour le nouveau salon si necessaire
      * 4. Ajoute le client au nouveau salon
-     * 5. Envoie la cle du nouveau salon au client
+     * 5. Envoie la clé du nouveau salon au client
      *
      * @param newRoom Le nom du nouveau salon
      */
@@ -288,13 +288,13 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Cree un nouveau salon avec une cle AES unique.
+     * Crée un nouveau salon avec une clé AES unique.
      *
-     * Securite : Chaque salon a sa propre cle AES-128, ce qui isole
-     * cryptographiquement les messages entre salons. Seuls les membres
-     * du salon possedent la cle et peuvent dechiffrer les messages.
+     * Sécurite : Chaque salon avec sa propre clé AES-128, ce qui sécurise
+     * les messages entre salons. Seuls les membres
+     * du salon possedent la clé et peuvent déchiffrer les messages.
      *
-     * @param roomName Le nom du salon a creer
+     * @param roomName Le nom du salon à créer
      */
     private void createRoom(String roomName) {
         synchronized (salons) {
@@ -326,11 +326,11 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Envoie un message prive a un utilisateur specifique.
-     * Le message est chiffre avec la cle personnelle du destinataire.
+     * Envoie un message privé à un utilisateur specifique.
+     * Le message est chiffré avec la clé personnelle du destinataire.
      *
      * @param targetUsername Le nom du destinataire
-     * @param message Le message a envoyer
+     * @param message Le message à envoyer
      */
     private void sendPrivateMessage(String targetUsername, String message) {
         for (gestionnaireClientGUI c : clients) {
@@ -355,7 +355,7 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Diffuser un message aux membres du même salon uniquement
+     * Diffuse le message uniquement au membre du salon
      * @param message Message à diffuser
      * @param expediteur Client expéditeur
      */
@@ -400,7 +400,7 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Diffuse un message a tous les clients connectes.
+     * Diffuse un message à tous les clients connectés.
      * Utilise pour les messages systeme (connexions, deconnexions).
      *
      * @param message Le message a diffuser
@@ -416,7 +416,7 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Notifie tous les clients de la creation d'un nouveau salon.
+     * Notifie tous les clients de la création d'un nouveau salon.
      *
      * @param roomName Le nom du nouveau salon
      */
@@ -449,7 +449,7 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Envoyer la liste des salons à ce client
+     * Envoie la liste des salons à ce client
      */
     private void sendRoomList() {
         try {
@@ -481,7 +481,7 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Diffuser la liste des utilisateurs à tous les clients
+     * Diffuse la liste des utilisateurs à tous les clients
      */
     private void broadcastUserList() {
         StringBuilder userListBuilder = new StringBuilder();
@@ -509,7 +509,7 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Envoie un message chiffre a ce client.
+     * Envoie un message chiffre à ce client.
      *
      * @param message Le message en clair a envoyer
      * @throws Exception Si l'envoi echoue
@@ -521,7 +521,7 @@ public class gestionnaireClientGUI implements Runnable {
     }
 
     /**
-     * Deconnecte proprement le client.
+     * Déconnecte proprement le client.
      *
      * Processus :
      * 1. Retire le client de la liste globale
@@ -529,7 +529,7 @@ public class gestionnaireClientGUI implements Runnable {
      * 3. Ferme les flux ObjectInputStream et ObjectOutputStream
      * 4. Ferme la socket
      * 5. Notifie les autres clients
-     * 6. Met a jour la liste des utilisateurs
+     * 6. Met à jour la liste des utilisateurs
      */
     private void deconnexion() {
         clients.remove(this);

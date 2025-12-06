@@ -12,8 +12,8 @@ import Cryptage.AES;
 
 /**
  * Gestionnaire de client pour la version console.
- * Chaque client connecte a son propre thread et sa propre cle AES.
- * Les messages sont diffuses a tous les autres clients (broadcast).
+ * Chaque client connecte à son propre thread et sa propre clé AES.
+ * Les messages sont diffuses à tous les autres clients (broadcast).
  *
  * Choix AES-128 :
  * - Standard industriel securise (2^128 combinaisons)
@@ -30,16 +30,16 @@ public class gestionnaireClient implements Runnable {
     private SecretKey cleAESClient;
 
     /**
-     * Liste partagee de tous les clients connectes.
-     * CopyOnWriteArrayList pour securite.
+     * Liste partagée de tous les clients connectés.
+     * CopyOnWriteArrayList pour la sécurité.
      */
     private static final List<gestionnaireClient> clients = new CopyOnWriteArrayList<>();
 
     /**
-     * Constructeur du gestionnaire.
-     * Ajoute le client a la liste partagee.
+     * Constructeur de gestionnaireClient.
+     * Ajoute le client à la liste partagée.
      *
-     * @param socket La socket du client connecte
+     * @param socket Socket du client connecté
      */
     public gestionnaireClient(Socket socket) {
         this.client = socket;
@@ -47,10 +47,10 @@ public class gestionnaireClient implements Runnable {
     }
 
     /**
-     * Boucle principale de gestion du client.
-     * 1. Genere et envoie une cle AES unique au client
-     * 2. Recoit les messages chiffres du client
-     * 3. Dechiffre et broadcast aux autres clients
+     * Boucle principale du gestionnaire du client.
+     * 1. Génère et envoie une clé AES unique au client
+     * 2. Reçoit les messages chiffres du client
+     * 3. Déchiffre et broadcast aux autres clients
      * 4. Termine sur reception de "bye"
      */
     @Override

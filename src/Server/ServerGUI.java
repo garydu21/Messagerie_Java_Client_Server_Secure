@@ -5,31 +5,31 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 /**
- * Serveur de chat avec support des salons prives.
- * Version amelioree supportant plusieurs salons avec cles AES independantes.
- * Chaque salon a sa propre cle pour isoler cryptographiquement les messages.
+ * Serveur de chat avec support des salons privés.
+ * Version améliorée supportant plusieurs salons avec clés AES independantes.
+ * Chaque salon a sa propre clé pour une meilleure sécurité des messages.
  *
  * @author Chris - Angel
  * @version 2.0
  */
 public class ServerGUI {
     /**
-     * Port d'ecoute du serveur (identique a la version console).
+     * Port d'écoute du serveur (identique à la version console).
      */
     private static final int PORT = 4444;
 
     /**
-     * Demarre le serveur graphique.
+     * Démarre le serveur graphique.
      * Affiche une banniere puis accepte les connexions entrantes.
-     * Utilise gestionnaireClientGUI pour gerer les salons et messages prives.
+     * Utilise gestionnaireClientGUI pour gérer les salons et messages privés.
      *
-     * @param args Arguments non utilises
+     * @param args Par défaut
      */
     public static void main(String[] args) {
         System.out.println("╔════════════════════════════════════════╗");
-        System.out.println("║   SERVEUR DE CHAT SÉCURISÉ (GUI)      ║");
-        System.out.println("║   Port: " + PORT + "                          ║");
-        System.out.println("║   Chiffrement: AES-128                ║");
+        System.out.println("║   SERVEUR DE CHAT SÉCURISÉ (GUI)       ║");
+        System.out.println("║   Port: " + PORT + "                           ║");
+        System.out.println("║   Chiffrement: AES-128                 ║");
         System.out.println("╚════════════════════════════════════════╝");
         System.out.println();
 
