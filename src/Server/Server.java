@@ -1,39 +1,41 @@
 package Server;
-
 import java.io.*;
-import java.net.*;
+import java.net.ServerSocket;
+import java.net.Socket;
 
+/**
+ * Serveur de chat multi-clients en mode console.
+ * Ecoute sur le port 4444 et cree un thread dedie pour chaque client.
+ *
+ * @author Chris - Angel
+ * @version 1.0
+ */
 public class Server {
+    /**
+     * Port d'ecoute du serveur.
+     */
     private static final int PORT = 4444;
 
+    /**
+     * Point d'entree du serveur.
+     * Cree une ServerSocket et attend les connexions dans une boucle infinie.
+     * Pour chaque client, un nouveau thread gestionnaireClient est lance.
+     *
+     * @param args Arguments de la ligne de commande (non utilises)
+     */
     public static void main(String[] args) {
         try (ServerSocket server = new ServerSocket(PORT)) {
-            // Initialisation du serveur
-            System.out.println("Serveur en attente de connexion sur le port " + PORT + "...");
-            Socket client = server.accept();
-            System.out.println("Connexion acceptée de : " + client.getInetAddress());
+            System.out.println("Serveur en attente de connexions...");
 
-            // Initialisation des flux
-            BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
-            PrintWriter out = new PrintWriter(client.getOutputStream(), true);
+            while (true) {
+                Socket client = server.accept();
+                System.out.println("Nouveau client connecté : " + client.getInetAddress());
 
-            boolean connexionFerme = false;
-
-            while (!connexionFerme) {
-
-                String clientEntree = in.readLine();
-
-                System.out.println("Client : " + clientEntree);
-
-                out.println("Message Reçu");
-
-                connexionFerme = clientEntree.equals("bye");
-
+                new Thread(new gestionnaireClient(client)).start();
             }
-            System.out.println("Fin de la transmission serveur.");
+
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
-
 }
